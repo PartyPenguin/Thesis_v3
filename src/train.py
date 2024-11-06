@@ -19,10 +19,7 @@ from util import compute_fk
 from util import save_model
 from evaluate import evaluate
 
-from graph_maker import (
-    create_hetero_push_cube_graph_batched,
-    create_hetero_pick_cube_graph_batched,
-)
+from graph_maker import (create_pick_cube_graph)
 
 device = "cuda" if th.cuda.is_available() else "cpu"
 
@@ -32,7 +29,7 @@ def train_step(policy, data, optim, loss_fn, device):
     policy.train()
 
     actions, obs = data
-    graph = create_hetero_pick_cube_graph_batched(obs)
+    graph = create_pick_cube_graph(obs)
 
     obs = obs.to(device)
     actions = actions.to(device)
@@ -110,7 +107,7 @@ def train(config: dict):
 
     dataloader, dataset = load_data(config=config)
     actions, obs = dataset[0]
-    graph = create_hetero_pick_cube_graph_batched(obs.unsqueeze(0)).to(device)
+    graph = create_pick_cube_graph(obs.unsqueeze(0))
     graph = graph.clone().to(device)
  
     hidden_dim = config["train"]["model_params"]["hidden_dim"]

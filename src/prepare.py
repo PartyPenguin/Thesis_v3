@@ -4,7 +4,7 @@ import numpy as np
 import h5py
 from mani_skill.utils.io_utils import load_json
 from tqdm import tqdm
-from graph_maker import create_hetero_pick_cube_graph_batched
+from graph_maker import create_pick_cube_graph
 from torch_geometric.io import fs
 from pathlib import Path
 from util import compute_fk
