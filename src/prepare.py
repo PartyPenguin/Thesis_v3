@@ -7,6 +7,7 @@ from tqdm import tqdm
 from graph_maker import create_hetero_pick_cube_graph_batched
 from torch_geometric.io import fs
 from pathlib import Path
+from util import compute_fk
 
 device = th.device("cuda" if th.cuda.is_available() else "cpu")
 
@@ -44,7 +45,7 @@ def load_raw_data(config: dict) -> Tuple[th.tensor, th.tensor, th.tensor]:
         episode_map.append(np.full(len(trajectory["obs"]) - 1, eps["episode_id"]))
 
     observations = th.tensor(np.vstack(observations)).to(device)
-    actions = th.tensor(np.vstack(actions))
+    actions = th.tensor(np.vstack(actions)).to(device)
     episode_map = th.tensor(np.hstack(episode_map))
 
     return observations, actions, episode_map, info

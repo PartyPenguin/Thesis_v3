@@ -5,6 +5,8 @@ from util import set_seed
 import train
 import evaluate
 import torch.multiprocessing as mp
+from envs.custom_pick_cube import PickCubeEnv
+
 
 
 def pipeline(config):

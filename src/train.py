@@ -19,10 +19,12 @@ from util import compute_fk
 from util import save_model
 from evaluate import evaluate
 
-from graph_maker import create_hetero_push_cube_graph_batched,create_hetero_pick_cube_graph_batched
+from graph_maker import (
+    create_hetero_push_cube_graph_batched,
+    create_hetero_pick_cube_graph_batched,
+)
 
 device = "cuda" if th.cuda.is_available() else "cpu"
-
 
 
 def train_step(policy, data, optim, loss_fn, device):
@@ -61,10 +63,17 @@ def train_step(policy, data, optim, loss_fn, device):
     # Compute action loss
     action_loss = loss_fn(pred_actions, actions)
 
+    # Distance loss to goal
+    goal_pos = obs[:, 26:29].float()
+    goal_pos = goal_pos.to(device)
+    distance_loss = loss_fn(ef_pos, goal_pos)
+
+
     # Combine losses with weights
     action_loss_weight = 1.0
     position_loss_weight = 1.0
     orientation_loss_weight = 0.01
+    distance_loss_weight = 0.1
 
     loss = (
         action_loss_weight * action_loss
@@ -81,8 +90,6 @@ def train_step(policy, data, optim, loss_fn, device):
     #     }
 
     # )
-
-
 
     # Optionally, add L2 regularization via weight decay in optimizer
     # l2_lambda = 0.001
@@ -105,25 +112,23 @@ def train(config: dict):
     actions, obs = dataset[0]
     graph = create_hetero_pick_cube_graph_batched(obs.unsqueeze(0)).to(device)
     graph = graph.clone().to(device)
-    # Get the shapes of the observation and action spaces and create the policy
-    # obs_shape = obs.shape[-1]
-    # input_dim = graph.x.shape[-1]
+ 
     hidden_dim = config["train"]["model_params"]["hidden_dim"]
-    output_dim = 8#actions.shape[-1]
-    # num_node_types = graph.num_node_types
-    # num_edge_types = graph.num_edge_types
-    # num_heads = config["train"]["model_params"]["num_heads"]
+    output_dim = 8  # actions.shape[-1]
+    num_heads = config["train"]["model_params"]["num_heads"]
+    num_layers = config["train"]["model_params"]["num_layers"]
+    dropout = config["train"]["model_params"]["dropout"]
 
-    policy = HeteroGNN(hidden_dim, output_dim).to(device)
-    
+    policy = HeteroGNN(
+        hidden_dim, output_dim, num_layers=num_layers, num_heads=num_heads, dropout=dropout
+    ).to(device)
+
     with th.no_grad():
         out = policy(graph)
     print(policy)
 
     loss_fn = nn.MSELoss()
-    optim = th.optim.Adam(
-        policy.parameters(), lr=config["train"]["lr"]
-    )
+    optim = th.optim.Adam(policy.parameters(), lr=config["train"]["lr"])
     # scheduler = th.optim.lr_scheduler.StepLR(optim, step_size=10, gamma=0.1)
     best_epoch_loss = np.inf
     best_success_rate = 0
@@ -145,7 +150,9 @@ def train(config: dict):
             save_model(policy, osp.join(ckpt_dir, "ckpt_best.pth"))
 
         if epoch % 5 == 0:
-            success_rate = evaluate(config, policy, run_name=wandb.run.id, video=True, num_envs=50)
+            success_rate = evaluate(
+                config, policy, run_name=wandb.run.id, video=True, num_envs=50
+            )
             if success_rate > best_success_rate:
                 best_success_rate = success_rate
                 save_model(policy, osp.join(ckpt_dir, "ckpt_best_success.pth"))

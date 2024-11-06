@@ -1,6 +1,6 @@
 # params.yaml
 env:
-  env_id: PickCube-v1
+  env_id: Custom_Pick_Cube
   obs_mode: state
   control_mode: pd_joint_delta_pos
   render_mode: rgb_array
@@ -9,23 +9,21 @@ prepare:
   window_size: 1
   load_count: -1
   transformations: []
-  raw_data_path: data/raw/PickCube/
-  prepared_data_path: data/prepared/PickCube/
-  data_file: trajectory.state.pd_joint_delta_pos.h5
+  raw_data_path: data/raw/CustomPickCube/
+  prepared_data_path: data/prepared/CustomPickCube/
+  data_file: trajectory.state.pd_joint_delta_pos.cpu.h5
 train:
   seed: 25
-  obs_mode: state
-  control_mode: pd_joint_delta_pos
-  render_mode: rgb_array
-  batch_size: 64
+  batch_size: 128
   num_workers: 0
   lr: 0.001
   log_dir: logs/output
   plot_dir: logs/output/plots
   epochs: 60
   model_params:
-    num_heads: 4
-    hidden_dim: 64
+    num_heads: 6
+    hidden_dim: 256
+    num_layers: 2
     dropout: 0.1
 
 evaluate:

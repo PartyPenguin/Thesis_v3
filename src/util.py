@@ -94,7 +94,7 @@ def compute_fk(q, end_only: bool = True) -> Tuple[th.Tensor, th.Tensor]:
         tf_rot = pk.matrix_to_quaternion(tf[:, :3, :3])
 
     # Ensure that there is always a batch dimension
-    if batch_size == 1:
+    if batch_size == 1 and not end_only:
         tf_pos = tf_pos.unsqueeze(0)
         tf_rot = tf_rot.unsqueeze(0)
     elif batch_size > 1 and not end_only:
@@ -108,7 +108,7 @@ def save_model(policy, path: str):
     checkpoint = {
         "model_state_dict": policy.state_dict(),
         # "input_dim": policy.obs_dims,
-        "output_dim": policy.output_dim
+        "output_dim": policy.output_dim,
     }
     th.save(checkpoint, path)
 
@@ -187,7 +187,10 @@ def evaluate_policy(
     """
     Evaluate the performance of a policy in a given environment.
     """
-    from graph_maker import create_hetero_pick_cube_graph_batched, create_hetero_push_cube_graph_batched
+    from graph_maker import (
+        create_hetero_pick_cube_graph_batched,
+        create_hetero_push_cube_graph_batched,
+    )
 
     envs = initialize_environment(config, num_envs, True, video)
     obs, _ = envs.reset(seed=config["env"]["seed"])
@@ -243,10 +246,14 @@ def load_policy(config: dict, run_name: str):
     checkpoint = th.load(model_path, weights_only=True)
     # obs_dim = checkpoint["input_dim"]
     act_dim = checkpoint["output_dim"]
-    # num_heads = config["train"]["model_params"]["num_heads"]
+    num_heads = config["train"]["model_params"]["num_heads"]
+    num_layers = config["train"]["model_params"]["num_layers"]
     hidden_dim = config["train"]["model_params"]["hidden_dim"]
-    policy = HeteroGNN(hidden_dim, act_dim).to(device)
-    
+    dropout = config["train"]["model_params"]["dropout"]
+    policy = HeteroGNN(
+        hidden_dim, act_dim, num_layers=num_layers, num_heads=num_heads, dropout=dropout
+    ).to(device)
+
     policy.load_state_dict(checkpoint["model_state_dict"])
 
     return policy
@@ -256,3 +263,15 @@ def rot_normalize(x):
     # x is a quaternion
     x = x / np.linalg.norm(x)
     return x
+
+
+def fourier_embedding(x, num_harmonics, scale_factor=5 * np.pi):
+    """
+    Compute the Fourier embedding of a given input tensor.
+    """
+    x = x.unsqueeze(-1)
+    harmonics = th.arange(1, num_harmonics + 1, device=x.device, dtype=x.dtype)
+    harmonics = harmonics * scale_factor * x
+    return th.cat([th.sin(harmonics), th.cos(harmonics)], dim=-1).reshape(
+        x.shape[0], x.shape[1], -1
+    )

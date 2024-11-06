@@ -90,12 +90,13 @@ class GATPolicy(nn.Module):
 
 
 class HeteroGNN(nn.Module):
-    def __init__(self, hidden_dim, output_dim, num_layers=3, heads=4):
+    def __init__(self, hidden_dim, output_dim, num_layers, num_heads, dropout):
         super(HeteroGNN, self).__init__()
         self.hidden_dim = hidden_dim
         self.output_dim = output_dim
         self.num_layers = num_layers  # Number of GATConv layers
-        self.heads = heads  # Number of attention heads
+        self.heads = num_heads  # Number of attention heads
+        self.dropout = dropout
 
         # Define linear layers for each node type to project features to hidden_dim
         self.node_proj = nn.ModuleDict({
@@ -104,8 +105,6 @@ class HeteroGNN(nn.Module):
             'object': nn.Linear(10, hidden_dim),
             'goal': nn.Linear(3, hidden_dim)
         })
-        self.dropout = nn.Dropout(0.1)
-
         self.norms = nn.ModuleDict({
             node_type: nn.LayerNorm(hidden_dim) for node_type in self.node_proj.keys()
         })
@@ -138,23 +137,24 @@ class HeteroGNN(nn.Module):
 
         # Create a list of HeteroConv layers
         self.convs = nn.ModuleList()
-        for _ in range(self.num_layers):
+        for layer_idx in range(self.num_layers):
             conv_dict = {}
+            in_dim = hidden_dim if layer_idx == 0 else hidden_dim * self.heads
             for relation in relations:
                 conv_dict[relation] = GATv2Conv(
-                    in_channels=hidden_dim,
-                    out_channels=hidden_dim // self.heads,
+                    in_channels=in_dim,
+                    out_channels=hidden_dim,
                     heads=self.heads,
                     edge_dim=4,  # Edge attribute dimension
                     concat=True,
-                    dropout=0.1,
+                    dropout=self.dropout,
                     add_self_loops=False
                 )
             hetero_conv = HeteroConv(conv_dict, aggr='sum')
             self.convs.append(hetero_conv)
 
         # Define a final linear layer to map the graph representation to output_dim outputs
-        self.output_layer = nn.Linear(hidden_dim * len(self.node_proj), output_dim)
+        self.output_layer = nn.Linear(hidden_dim * self.heads * len(self.node_proj), output_dim)
 
     def forward(self, data):
         # Project node features to hidden_dim

@@ -9,6 +9,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 from pyvis.network import Network
 from util import compute_fk
+from util import fourier_embedding
 
 
 
@@ -854,7 +855,7 @@ def create_hetero_pick_cube_graph_batched(obs: np.ndarray, verbose=False, noise=
     obs = torch.tensor(obs, dtype=torch.float32, device=device)
     # Truncate all values in obs to have maximal 5 decimal places
     batch_size = obs.shape[0]
-    offset = torch.tensor([-0.615, 0, 0], device=device)
+    num_joints = 7
 
     # ===============================
     # Split observation into components
@@ -868,16 +869,26 @@ def create_hetero_pick_cube_graph_batched(obs: np.ndarray, verbose=False, noise=
     tcp_to_obj_pos = obs[:, 36:39]
     obj_to_goal_pos = obs[:, 39:42]
 
+
     # ===============================
     # Compute forward kinematics for the batch
     # ===============================
     joint_se3_pos, joint_se3_rot = compute_fk(joint_positions[:,:7], end_only=False)
-    joint_se3_pos += offset
 
     # Take the first 7 joints for position and rotation
     joint_se3_pos = joint_se3_pos[:, 1:8]  # Shape: (batch_size, 7, 3)
     joint_se3_rot = joint_se3_rot[:, 1:8]  # Shape: (batch_size, 7, 4)
     joint_se3_pose = torch.cat([joint_se3_pos, joint_se3_rot], dim=-1)  # Shape: (batch_size, 7, 7)
+
+
+    # ===============================
+    # Fourier Embedding
+    # ===============================
+    joint_se3_pos_harmonics = fourier_embedding(joint_se3_pos, num_harmonics=8)  # Shape: (batch_size, 7, 48)
+    tcp_pos_harmonics = fourier_embedding(tcp_pose[:,:3], num_harmonics=8).reshape(batch_size,-1)  # Shape: (batch_size, 48)
+    obj_pos_harmonics = fourier_embedding(obj_pose[:,:3], num_harmonics=8).reshape(batch_size,-1)  # Shape: (batch_size, 48)
+    goal_pos_harmonics = fourier_embedding(goal_position, num_harmonics=8).reshape(batch_size,-1)  # Shape: (batch_size, 48)
+
 
     # ===============================
     # Prepare node features per node type
@@ -885,22 +896,21 @@ def create_hetero_pick_cube_graph_batched(obs: np.ndarray, verbose=False, noise=
     data = HeteroData()
 
     # --- Joint Nodes ---
-    num_joints = 7
-    joint_node_features = joint_se3_pose.view(-1, 7)  # Shape: (batch_size * 7, 7)
+    joint_node_features = torch.cat([joint_se3_pose], dim=-1).view(-1, 7)  # Shape: (batch_size, 7, 55)
     data['joint'].x = joint_node_features
     data['joint'].batch = torch.arange(batch_size, device=device).repeat_interleave(num_joints)
 
     # --- TCP Node ---
-    tcp_node_features = torch.cat([tcp_pose, joint_positions[:,-1].unsqueeze(-1), is_grasped, tcp_to_obj_pos], dim=-1)  # Shape: (batch_size, 12)
+    tcp_node_features = torch.cat([tcp_pose, joint_positions[:,-1].unsqueeze(-1), is_grasped, tcp_to_obj_pos], dim=-1)  # Shape: (batch_size, 60)
     data['tcp'].x = tcp_node_features
     data['tcp'].batch = torch.arange(batch_size, device=device)
 
     # --- Object Node ---
-    data['object'].x = torch.cat([obj_pose, obj_to_goal_pos], dim=-1)  # Shape: (batch_size, 10)
+    data['object'].x = torch.cat([obj_pose, obj_to_goal_pos], dim=-1)  # Shape: (batch_size, 58)
     data['object'].batch = torch.arange(batch_size, device=device)
 
     # --- Goal Node ---
-    data['goal'].x = goal_position  # Shape: (batch_size, 3)
+    data['goal'].x = torch.cat([goal_position], dim=-1)  # Shape: (batch_size, 51)
     data['goal'].batch = torch.arange(batch_size, device=device)
 
     # ===============================
@@ -924,8 +934,9 @@ def create_hetero_pick_cube_graph_batched(obs: np.ndarray, verbose=False, noise=
     data['joint', 'kinematic', 'joint'].edge_attr = compute_edge_attr(src_pos, dst_pos)
 
     # --- Joint to TCP Edges ---
-    joint_to_tcp_src = num_joints - 1 + num_joints * torch.arange(batch_size, device=device)
-    joint_to_tcp_dst = torch.arange(batch_size, device=device)
+    # joint_to_tcp_src = num_joints - 1 + num_joints * torch.arange(batch_size, device=device)
+    joint_to_tcp_src = torch.arange(num_joints * batch_size, device=device)
+    joint_to_tcp_dst = torch.arange(batch_size, device=device).repeat_interleave(num_joints)
     edge_index = torch.stack([joint_to_tcp_src, joint_to_tcp_dst], dim=0)
     data['joint', 'kinematic', 'tcp'].edge_index = edge_index
 
@@ -962,7 +973,7 @@ def create_hetero_pick_cube_graph_batched(obs: np.ndarray, verbose=False, noise=
     # dst_pos = data['goal'].x
     # data['tcp', 'interaction', 'goal'].edge_attr = compute_edge_attr(src_pos, dst_pos)
     src_pos = data['object'].x[:, :3]
-    dst_pos = data['goal'].x
+    dst_pos = data['goal'].x[:, :3]
     data['object', 'interaction', 'goal'].edge_attr = compute_edge_attr(src_pos, dst_pos)
 
     # Joint to TCP Interaction Edges

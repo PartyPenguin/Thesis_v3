@@ -5,6 +5,7 @@ import yaml
 import curses
 from graph_maker import create_hetero_pick_cube_graph_batched
 import numpy as np
+from envs.custom_pick_cube import PickCubeEnv
 
 def main(stdscr):
     # Clear screen
@@ -14,19 +15,20 @@ def main(stdscr):
     with open('params.yaml', 'r') as f:
         config = yaml.safe_load(f)
 
-    run_name = "forgotten-newt-986"
+    run_name = "rare-firefly-1133"
 
     env = gym.make(
         "PickCube-v1", # there are more tasks e.g. "PushCube-v1", "PegInsertionSide-v1", ...
         num_envs=1,
         obs_mode="state", # there is also "state_dict", "rgbd", ...
         control_mode="pd_joint_delta_pos", # there is also "pd_joint_delta_pos", ...
-        render_mode="human"
+        render_mode="human",
+        viewer_camera_configs=dict(shader_pack='rt-fast'),
     )
 
     policy = load_policy(config, run_name)
 
-    obs, _ = env.reset(seed=0) # reset with a seed for determinism
+    obs, _ = env.reset(seed=1337) # reset with a seed for determinism
     done = False
     step = 0
     while not done:
