@@ -11,10 +11,12 @@ from tqdm import tqdm
 from scipy.spatial.transform import Rotation as R
 import wandb
 from torch_geometric.data.batch import Batch
-
+from mani_skill.trajectory.utils.actions import conversion
+import gymnasium as gym
+from mani_skill.agents.controllers import PDJointPosController
 # Local application/library-specific imports
 from dataset import load_data
-from modules import GATPolicy, GCNPolicy, HEATPolicy, HeteroGNN
+from modules import GCN_Policy , BaselineMLP
 from util import compute_fk
 from util import save_model
 from evaluate import evaluate
@@ -38,10 +40,11 @@ def train_step(policy, data, optim, loss_fn, device):
     pred_actions = policy(graph)
 
     q_pos = obs[:, :9].float()
-
+    
     # Compute predicted and true joint positions
-    pred_q_pos = q_pos[:, :7] + pred_actions[:, :7]
-    true_q_pos = q_pos[:, :7] + actions[:, :7]
+
+    pred_q_pos = q_pos[:, :7] + (pred_actions[:, :7]/10)
+    true_q_pos = q_pos[:, :7] + (actions[:, :7]/10)
 
     # Compute forward kinematics
     ef_pos, ef_rot = compute_fk(pred_q_pos)
@@ -51,19 +54,19 @@ def train_step(policy, data, optim, loss_fn, device):
     position_loss = loss_fn(ef_pos, ef_pos_true)
 
     # Compute orientation loss
-    ef_rot = R.from_quat(ef_rot.detach().cpu().numpy())
-    ef_rot_true = R.from_quat(ef_rot_true.detach().cpu().numpy())
-    rel_rot = ef_rot.inv() * ef_rot_true
-    angle = th.as_tensor(rel_rot.magnitude()).to(device).float()
-    orientation_loss = angle.mean()
+    # ef_rot = R.from_quat(ef_rot.detach().cpu().numpy())
+    # ef_rot_true = R.from_quat(ef_rot_true.detach().cpu().numpy())
+    # rel_rot = ef_rot.inv() * ef_rot_true
+    # angle = th.as_tensor(rel_rot.magnitude()).to(device).float()
+    # orientation_loss = angle.mean()
 
     # Compute action loss
     action_loss = loss_fn(pred_actions, actions)
 
     # Distance loss to goal
-    goal_pos = obs[:, 26:29].float()
-    goal_pos = goal_pos.to(device)
-    distance_loss = loss_fn(ef_pos, goal_pos)
+    # goal_pos = obs[:, 26:29].float()
+    # goal_pos = goal_pos.to(device)
+    # distance_loss = loss_fn(ef_pos, goal_pos)
 
 
     # Combine losses with weights
@@ -75,7 +78,7 @@ def train_step(policy, data, optim, loss_fn, device):
     loss = (
         action_loss_weight * action_loss
         + position_loss_weight * position_loss
-        + orientation_loss_weight * orientation_loss
+        # + orientation_loss_weight * orientation_loss
     )
 
     # Store losses for logging
@@ -110,20 +113,27 @@ def train(config: dict):
     graph = create_pick_cube_graph(obs.unsqueeze(0))
     graph = graph.clone().to(device)
  
+    input_dim = graph[0].x.shape[-1]
     hidden_dim = config["train"]["model_params"]["hidden_dim"]
     output_dim = 8  # actions.shape[-1]
     num_heads = config["train"]["model_params"]["num_heads"]
     num_layers = config["train"]["model_params"]["num_layers"]
     dropout = config["train"]["model_params"]["dropout"]
 
-    policy = HeteroGNN(
-        hidden_dim, output_dim, num_layers=num_layers, num_heads=num_heads, dropout=dropout
+    policy = GCN_Policy(
+        input_dim=input_dim,
+        hidden_dim=hidden_dim,
+        output_dim=output_dim,
+        num_layers=num_layers,
+        dropout=dropout,
     ).to(device)
 
     with th.no_grad():
         out = policy(graph)
-    print(policy)
 
+    # policy = BaselineMLP(input_dim=obs.shape[-1], hidden_dim=hidden_dim, output_dim=output_dim, num_layers=num_layers, dropout=dropout).to(device)
+    print(policy)
+    
     loss_fn = nn.MSELoss()
     optim = th.optim.Adam(policy.parameters(), lr=config["train"]["lr"])
     # scheduler = th.optim.lr_scheduler.StepLR(optim, step_size=10, gamma=0.1)

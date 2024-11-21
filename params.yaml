@@ -11,10 +11,10 @@ prepare:
   transformations: []
   raw_data_path: data/raw/CustomPickCube/
   prepared_data_path: data/prepared/CustomPickCube/
-  data_file: trajectory.state.pd_joint_delta_pos.cpu.h5
+  data_file: augmented.trajectory.h5
 train:
   seed: 25
-  batch_size: 128
+  batch_size: 32
   num_workers: 0
   lr: 0.001
   log_dir: logs/output
@@ -23,7 +23,7 @@ train:
   model_params:
     num_heads: 6
     hidden_dim: 256
-    num_layers: 2
+    num_layers: 3
     dropout: 0.1
 
 evaluate:

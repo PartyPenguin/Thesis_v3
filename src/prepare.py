@@ -8,6 +8,8 @@ from graph_maker import create_pick_cube_graph
 from torch_geometric.io import fs
 from pathlib import Path
 from util import compute_fk
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
+
 
 device = th.device("cuda" if th.cuda.is_available() else "cpu")
 
@@ -66,17 +68,26 @@ def prepare(config: dict):
 
     obs = obs.detach().cpu().numpy()
 
-    # Create Graphs from observations
+    # Normalize joint positions and joint velocities using StandardScaler
+    pos_scaler = StandardScaler()
+    # vel_scaler = MinMaxScaler()
+    obs[:, :9] = pos_scaler.fit_transform(obs[:, :9])
+    # obs[:, 9:18] = vel_scaler.fit_transform(obs[:, 9:18])
 
+    # # Remove joint velocities from the observations
+    # columns_to_remove = np.s_[9:18]  # Slicing from column 9 up to (but not including) 18
+    # obs = np.delete(obs, columns_to_remove, axis=1)
 
-    # graph_list = create_hetero_pick_cube_graph_batched(obs)
+    # # Save the scaler
+    fs.torch_save(pos_scaler, config["prepare"]["prepared_data_path"] + "pos_scaler.pt")
+    # fs.torch_save(vel_scaler, config["prepare"]["prepared_data_path"] + "vel_scaler.pt")
 
     # Create a directory to save the prepared data
     Path(config["prepare"]["prepared_data_path"]).mkdir(parents=True, exist_ok=True)
 
-    # Save the graphs
-    # fs.torch_save(graph_list, config["prepare"]["prepared_data_path"] + "graphs.pt")
     # Save the actions
     fs.torch_save(act, config["prepare"]["prepared_data_path"] + "actions.pt")
     # Save the obs
     fs.torch_save(th.tensor(obs), config["prepare"]["prepared_data_path"] + "obs.pt")
+    # Save the episode_map
+    fs.torch_save(episode_map, config["prepare"]["prepared_data_path"] + "episode_map.pt")

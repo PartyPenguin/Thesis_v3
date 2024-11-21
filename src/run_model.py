@@ -3,7 +3,7 @@ import mani_skill.envs
 from util import load_policy
 import yaml
 import curses
-from graph_maker import create_hetero_pick_cube_graph_batched
+from graph_maker import create_pick_cube_graph
 import numpy as np
 from envs.custom_pick_cube import PickCubeEnv
 
@@ -15,7 +15,7 @@ def main(stdscr):
     with open('params.yaml', 'r') as f:
         config = yaml.safe_load(f)
 
-    run_name = "rare-firefly-1133"
+    run_name = "dark-universe-1181"
 
     env = gym.make(
         "PickCube-v1", # there are more tasks e.g. "PushCube-v1", "PegInsertionSide-v1", ...
@@ -39,7 +39,7 @@ def main(stdscr):
         stdscr.addstr(6, 0, f"obj_pose_obs: {np.round(obs[:, 29:36],5)}")
         stdscr.refresh()
 
-        graph = create_hetero_pick_cube_graph_batched(obs)
+        graph = create_pick_cube_graph(obs)
         # Clear screen
         stdscr.clear()
         action = policy(graph).cpu().detach().numpy()

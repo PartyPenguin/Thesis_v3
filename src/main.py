@@ -6,7 +6,10 @@ import train
 import evaluate
 import torch.multiprocessing as mp
 from envs.custom_pick_cube import PickCubeEnv
-
+import torch
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
+torch.serialization.add_safe_globals([StandardScaler])
+torch.serialization.add_safe_globals([MinMaxScaler])
 
 
 def pipeline(config):
