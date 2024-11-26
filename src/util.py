@@ -19,6 +19,7 @@ from torch_robotics.torch_kinematics_tree.models.robots import (
 from torch_geometric.data.batch import Batch
 from sklearn.preprocessing import StandardScaler
 from torch_geometric.io import fs
+import envs.custom_pick_cube 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 chain = pk.build_serial_chain_from_urdf(
@@ -183,69 +184,6 @@ def initialize_environment(
     return envs
 
 
-def evaluate_policy(
-    policy, config: dict, num_envs: int, num_episodes=10, video: bool = False, gpu=False
-):
-    """
-    Evaluate torche performance of a policy in a given environment.
-    """
-    from graph_maker import (
-       create_pick_cube_graph
-    )
-    pos_scaler = fs.torch_load(config["prepare"]["prepared_data_path"] + "pos_scaler.pt")
-    vel_scaler = fs.torch_load(config["prepare"]["prepared_data_path"] + "vel_scaler.pt")
-    envs = initialize_environment(config, num_envs, True, video)
-    obs, _ = envs.reset(seed=config["env"]["seed"])
-    pbar = tqdm(
-        total=200,
-        leave=False,
-        desc="Evaluating Policy",
-        bar_format="{l_bar}{bar:20}{r_bar}{bar:-20b}",
-    )
-
-    episodes = []
-    successes = []
-    total_steps = 200
-    for _ in range(total_steps):
-
-        if gpu:
-            obs = obs.detach().cpu().numpy()
-
-        # Normalize joint positions and velicities using StandardScaler
-        obs[:, :9] = pos_scaler.transform(obs[:, :9])
-        # obs[:, 9:18] = vel_scaler.transform(obs[:, 9:18])
-
-
-        # Remove joint velocities from the observations
-        # columns_to_remove = np.s_[9:18]  # Slicing from column 9 up to (but not including) 18
-        # obs = np.delete(obs, columns_to_remove, axis=1)
-        graph = create_pick_cube_graph(obs)
-
-        with torch.no_grad():
-            actions = policy(graph).squeeze()
-
-        if not gpu:
-            actions = actions.cpu().numpy()
-        obs, reward, terminated, truncated, info = envs.step(actions)
-
-        pbar.update(1)
-        if "final_info" in info:
-            mask = info["_final_info"]
-            episodes.append(mask)
-
-            if "success" in info:
-                successes.append(info["success"])
-
-    pbar.close()
-    if not gpu:
-        successes = [torch.tensor(x) for x in successes]
-    success_rate = (
-        (torch.stack(successes).sum() / num_envs).item() if len(successes) > 0 else 0
-    )
-    envs.close()
-    return success_rate
-
-
 def load_policy(config: dict, run_name: str):
 
     model_path = os.path.join(
@@ -253,7 +191,7 @@ def load_policy(config: dict, run_name: str):
         "checkpoints/ckpt_best_success.pth",
     )
 
-    checkpoint = torch.load(model_path, weights_only=True)
+    checkpoint = fs.torch_load(model_path)
     # obs_dim = checkpoint["input_dim"]
     act_dim = checkpoint["output_dim"]
     input_dim = checkpoint["input_dim"]

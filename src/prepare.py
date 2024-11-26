@@ -9,6 +9,7 @@ from torch_geometric.io import fs
 from pathlib import Path
 from util import compute_fk
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
+import joblib
 
 
 device = th.device("cuda" if th.cuda.is_available() else "cpu")
@@ -79,7 +80,7 @@ def prepare(config: dict):
     # obs = np.delete(obs, columns_to_remove, axis=1)
 
     # # Save the scaler
-    fs.torch_save(pos_scaler, config["prepare"]["prepared_data_path"] + "pos_scaler.pt")
+    joblib.dump(pos_scaler, config["prepare"]["prepared_data_path"] + "pos_scaler.pkl")
     # fs.torch_save(vel_scaler, config["prepare"]["prepared_data_path"] + "vel_scaler.pt")
 
     # Create a directory to save the prepared data

@@ -6,6 +6,7 @@ from torch_geometric.nn import global_mean_pool, global_add_pool, Linear, BatchN
 from torch_geometric.nn import HeteroConv
 from torch_geometric.nn import GINEConv
 from torch_geometric.nn import GATv2Conv
+from torch_geometric.nn import MLP
 import torch.nn.functional as F
 import yaml
 
@@ -27,10 +28,38 @@ class GCN_Policy(nn.Module):
         self.num_heads = 6
 
         # Linear Layer for each node type
-        self.joint_lin = Linear(input_dim, self.proj_dim)
-        self.obj_lin = Linear(input_dim, self.proj_dim)
-        self.tcp_lin = Linear(input_dim, self.proj_dim)
-        self.goal_lin = Linear(input_dim, self.proj_dim)
+        self.joint_lin = MLP(
+            in_channels=input_dim,
+            out_channels=self.proj_dim,
+            hidden_channels=hidden_dim,
+            num_layers=2,
+            act=nn.GELU(approximate='tanh'),
+            norm="layer_norm",
+        )
+        self.obj_lin = MLP(
+            in_channels=input_dim,
+            out_channels=self.proj_dim,
+            hidden_channels=hidden_dim,
+            num_layers=2,
+            act=nn.GELU(approximate='tanh'),
+            norm="layer_norm",
+        )
+        self.tcp_lin = MLP(
+            in_channels=input_dim,
+            out_channels=self.proj_dim,
+            hidden_channels=hidden_dim,
+            num_layers=2,
+            act=nn.GELU(approximate='tanh'),
+            norm="layer_norm",
+        )
+        self.goal_lin = MLP(        
+            in_channels=input_dim,
+            out_channels=self.proj_dim,
+            hidden_channels=hidden_dim,
+            num_layers=2,
+            act=nn.GELU(approximate='tanh'),
+            norm="layer_norm",
+        )
 
         # List of GCN layers
         self.convs = nn.ModuleList()
@@ -40,14 +69,29 @@ class GCN_Policy(nn.Module):
                 GATv2Conv(
                     input_dim,
                     hidden_dim,
-                    edge_dim=4,
+                    edge_dim=54,
                     heads=self.num_heads,
                     dropout=dropout,
                 )
             )
 
-        # Linear layer that projects the hidden dimension to the output dimension
-        self.lin_out = Linear(hidden_dim * self.num_heads, output_dim)
+        # Seperate prediction head for translation and grasp
+        self.prediction_head = MLP(
+            in_channels=hidden_dim * self.num_heads,
+            out_channels=output_dim - 1,
+            hidden_channels=hidden_dim,
+            num_layers=2,
+            act=nn.GELU(approximate='tanh'),
+            norm="layer_norm",
+        )
+        self.prediction_head_grasp = MLP(
+            in_channels=hidden_dim * self.num_heads,
+            out_channels=1,
+            hidden_channels=hidden_dim,
+            num_layers=2,
+            act=nn.GELU(approximate='tanh'),
+            norm="layer_norm",
+        )
 
     def forward(self, data):
         x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
@@ -72,7 +116,7 @@ class GCN_Policy(nn.Module):
         x = F.relu(x_processed)
 
         # Apply dropout
-        x = F.dropout(x, p=self.dropout, training=self.training)
+        # x = F.dropout(x, p=self.dropout, training=self.training)
 
         # Apply the GCN layers
         for conv in self.convs:
@@ -81,10 +125,19 @@ class GCN_Policy(nn.Module):
             # x = F.dropout(x, p=self.dropout, training=self.training)
 
         # Global mean pooling
-        x = global_mean_pool(x, data.batch)
+        # x = global_mean_pool(x, data.batch)
+
+        # Only take joint and tcp nodes for prediction
+        x = x[torch.logical_or(node_type_mask == 0, node_type_mask == 2)]
+
+        x = global_mean_pool(x, data.batch[torch.logical_or(node_type_mask == 0, node_type_mask == 2)])
 
         # Project the hidden dimension to the output dimension
-        x = self.lin_out(x)
+        x_q = self.prediction_head(x)
+        x_g = self.prediction_head_grasp(x)
+        
+        # Concatenate the translation and grasp predictions
+        x = torch.cat([x_q, x_g], dim=1)
 
         # Tanh activation for the output
         x = torch.tanh(x)

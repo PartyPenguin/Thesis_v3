@@ -105,6 +105,7 @@ def create_pick_cube_graph(obs: torch.tensor) -> dict:
     }
 
     edge_list = []
+
     # Joint-to-joint edges
     joint_pairs = torch.combinations(indices['joint'], 2).t()
     edge_list.append(joint_pairs)
@@ -117,7 +118,7 @@ def create_pick_cube_graph(obs: torch.tensor) -> dict:
     edge_list.append(torch.stack([indices['goal'], indices['obj']]))
 
     edge_index = torch.cat(edge_list, dim=1).unsqueeze(0).expand(batch_size, -1, -1)
-
+    
     # ===============================
     # Create the graph
     # ===============================
@@ -139,9 +140,6 @@ def create_pick_cube_graph(obs: torch.tensor) -> dict:
     graph = T.ToUndirected()(graph)
 
     return graph
-
-
-            
 
 
 def visualize_graph(graph:Data):
@@ -166,6 +164,7 @@ def compute_edge_attr(src_pos, dst_pos):
     """
 
     vector = dst_pos - src_pos  # Shape: (E, 3)
-    norm = torch.norm(vector, dim=1, keepdim=True)  # Shape: (E, 1)
-    edge_attr = torch.cat([vector, norm], dim=1)  # Shape: (E, 4)
+    # norm = torch.norm(vector, dim=1, keepdim=True)  # Shape: (E, 1)
+    fourier = fourier_embedding(vector, 9)
+    edge_attr = torch.cat([fourier], dim=1).reshape(fourier.shape[0], -1) # Shape: (E, 4)
     return edge_attr

@@ -15,16 +15,16 @@ prepare:
 train:
   seed: 25
   batch_size: 32
-  num_workers: 0
+  num_workers: 8
   lr: 0.001
   log_dir: logs/output
   plot_dir: logs/output/plots
-  epochs: 60
+  epochs: 30
   model_params:
     num_heads: 6
-    hidden_dim: 256
-    num_layers: 3
-    dropout: 0.1
+    hidden_dim: 512
+    num_layers: 2
+    dropout: 0.5
 
 evaluate:
   render_mode: rgb_array

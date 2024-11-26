@@ -1,0 +1,23 @@
+program: src/main.py
+method: bayes
+metric:
+  name: success_rate
+  goal: maximize
+parameters:
+  train:
+    parameters:
+      batch_size:
+        values:
+        - 32
+        - 64
+        - 128
+        - 256
+        - 512
+      model_params:
+        parameters:
+          hidden_dim:
+            values:
+            - 128
+            - 256
+            - 512
+    
